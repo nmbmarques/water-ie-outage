@@ -1,0 +1,280 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Water Outage Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      background: #f5f5f7;
+      color: #222;
+    }
+    header {
+      background: #1e88e5;
+      color: white;
+      padding: 1rem 1.5rem;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+    main {
+      padding: 1rem 1.5rem 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    form {
+      background: white;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-gap: 0.75rem 1rem;
+      align-items: end;
+      margin-bottom: 1rem;
+    }
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #555;
+    }
+    input {
+      width: 100%;
+      padding: 0.45rem 0.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid #ccc;
+      font-size: 0.9rem;
+    }
+    button {
+      padding: 0.6rem 1rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: #1e88e5;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:hover {
+      background: #1565c0;
+    }
+    .status-line {
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 0.5rem;
+    }
+    .outage-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-gap: 0.75rem;
+    }
+    .card {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 0.85rem 1rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #e3f2fd;
+      color: #1565c0;
+      font-weight: 600;
+    }
+    .field {
+      font-size: 0.85rem;
+      margin: 0.1rem 0;
+    }
+    .field-label {
+      font-weight: 600;
+    }
+    .description {
+      margin-top: 0.4rem;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+    .error {
+      color: #c62828;
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+    @media (min-width: 700px) {
+      .outage-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Water Outage Monitor</h1>
+  </header>
+  <main>
+    <form id="filter-form">
+      <div>
+        <label for="county">County *</label>
+        <input id="county" name="county" required placeholder="Mayo" />
+      </div>
+      <div>
+        <label for="refnum">Reference (optional)</label>
+        <input id="refnum" name="refnum" placeholder="MAY00102991" />
+      </div>
+      <div>
+        <label for="location">Location contains (optional)</label>
+        <input id="location" name="location" placeholder="Ballina" />
+      </div>
+      <div>
+        <label for="interval">Auto-refresh (seconds, optional)</label>
+        <input id="interval" name="interval" type="number" min="0" placeholder="0 = off" />
+      </div>
+      <div>
+        <button type="submit">Search / Refresh</button>
+      </div>
+    </form>
+
+    <div class="status-line" id="status-line">Enter filters and press “Search / Refresh”.</div>
+    <div class="error" id="error-line"></div>
+
+    <div class="outage-list" id="outage-list"></div>
+  </main>
+
+  <script>
+    const form = document.getElementById("filter-form");
+    const statusLine = document.getElementById("status-line");
+    const errorLine = document.getElementById("error-line");
+    const outageList = document.getElementById("outage-list");
+
+    let refreshTimer = null;
+
+    async function fetchOutages(params) {
+      const url = new URL("/api/outages", window.location.origin);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== "") {
+          url.searchParams.set(key, value);
+        }
+      });
+
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || res.statusText || "Request failed");
+      }
+      return res.json();
+    }
+
+    function renderOutages(data) {
+      outageList.innerHTML = "";
+
+      if (!data || !Array.isArray(data.outages) || data.outages.length === 0) {
+        statusLine.textContent = `No matching open outages for county ${data?.county || ""}.`;
+        return;
+      }
+
+      statusLine.textContent = `Found ${data.outages.length} outage(s) in ${data.county}.`;
+      data.outages.forEach((o) => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const header = document.createElement("div");
+        header.className = "card-header";
+
+        const title = document.createElement("div");
+        title.innerHTML = `<strong>${o.location || "(no location)"}</strong>`;
+        header.appendChild(title);
+
+        const badge = document.createElement("div");
+        badge.className = "badge";
+        badge.textContent = o.status || "Unknown";
+        header.appendChild(badge);
+
+        card.appendChild(header);
+
+        const fields = [
+          ["Reference", o.reference || "(unknown)"],
+          ["Start", o.startdate_human || "Unknown"],
+          ["End", o.enddate_human || "Unknown"],
+          ["County", o.county || ""],
+        ];
+
+        fields.forEach(([label, value]) => {
+          const p = document.createElement("div");
+          p.className = "field";
+          p.innerHTML = `<span class="field-label">${label}:</span> ${value}`;
+          card.appendChild(p);
+        });
+
+        if (o.description) {
+          const desc = document.createElement("div");
+          desc.className = "description";
+          desc.textContent = o.description;
+          card.appendChild(desc);
+        }
+
+        outageList.appendChild(card);
+      });
+    }
+
+    async function performSearch() {
+      const county = document.getElementById("county").value.trim();
+      const refnum = document.getElementById("refnum").value.trim();
+      const location = document.getElementById("location").value.trim();
+
+      if (!county) {
+        errorLine.textContent = "County is required.";
+        return;
+      }
+
+      errorLine.textContent = "";
+      statusLine.textContent = "Loading…";
+
+      try {
+        const data = await fetchOutages({ county, refnum, location });
+        renderOutages(data);
+      } catch (err) {
+        console.error(err);
+        errorLine.textContent = "Error: " + err.message;
+        statusLine.textContent = "Failed to load data.";
+        outageList.innerHTML = "";
+      }
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      // Clear existing timer
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+
+      performSearch();
+
+      const intervalVal = parseInt(
+        document.getElementById("interval").value,
+        10
+      );
+      if (!Number.isNaN(intervalVal) && intervalVal > 0) {
+        refreshTimer = setInterval(performSearch, intervalVal * 1000);
+      }
+    });
+  </script>
+</body>
+</html>
