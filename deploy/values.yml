@@ -30,6 +30,4 @@ resources:
 serviceAccount:
   create: true
   name: water-ie-outage-sa
-
-imagePullSecrets:
-  - name: ghcr-secret
+  
