@@ -1,0 +1,35 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/nmbmarques/water-ie-outage
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  host: water-ie-outage.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+  tls:
+    enabled: true
+    secretName: water-ie-outage-tls
+
+resources:
+  limits:
+    memory: 128Mi
+  requests:
+    memory: 64Mi
+
+serviceAccount:
+  create: true
+  name: water-ie-outage-sa
+
+imagePullSecrets:
+  - name: ghcr-secret
